@@ -137,6 +137,10 @@ int NAME(struct __ctx_buff *ctx)						\
 	if (hdrlen < 0)								\
 		return hdrlen;							\
 										\
+	if (tuple->nexthdr == IPPROTO_IPIP) { \
+	    invoke_tailcall_if(CONDITION, TARGET_ID, TARGET_NAME);			\
+	    return ret; \
+	} \
 	l4_off = ETH_HLEN + hdrlen;						\
 										\
 	ct_buffer.ret = ct_lookup6(get_ct_map6(tuple), tuple, ctx, l4_off,	\
@@ -237,6 +241,11 @@ static __always_inline int handle_ipv6_from_lxc(struct __ctx_buff *ctx, __u32 *d
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6))
 		return DROP_INVALID;
+
+    /* handle ip-in-ip */
+    if (ip6->nexthdr == IPPROTO_IPIP) {
+        goto pass_to_stack;
+    }
 
 	/* Determine the destination category for policy fallback.  Service
 	 * translation of the destination address is done before this function,
@@ -1408,6 +1417,12 @@ ipv6_policy(struct __ctx_buff *ctx, int ifindex, __u32 src_label,
 	 * redirection to the ingress proxy as we would loop forever.
 	 */
 	skip_ingress_proxy = tc_index_skip_ingress_proxy(ctx);
+
+    /* handle ip-in-ip */
+    if (ip6->nexthdr == IPPROTO_IPIP) {
+        if (ifindex)
+		    return redirect_ep(ctx, ifindex, from_host);
+    }
 
 	ct_buffer = map_lookup_elem(&CT_TAIL_CALL_BUFFER6, &zero);
 	if (!ct_buffer)
